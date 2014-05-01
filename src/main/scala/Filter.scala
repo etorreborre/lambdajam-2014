@@ -34,13 +34,23 @@ object Filter extends App {
   type Fragments = Process[Task, Fragment]
 
 
-  def withPrevious(store: StatsStore) = { fs: Fragments =>
-    fs.flatMap { fragment =>
-      eval(store.previousResult(fragment)
-        .map(fragment.setPreviousResult).toTask)
-    }
-  }
+//  def withPrevious(store: StatsStore) = { fs: Fragments =>
+//    fs.flatMap { fragment =>
+//      eval(store.previousResult(fragment)
+//        .map(fragment.setPreviousResult).toTask)
+//    }
+//  }
 
+    def withPrevious(store: StatsStore) = { fs: Fragments =>
+      fs.flatMap { fragment =>
+        val updated: Action[Fragment] =
+          store.previousResult(fragment)
+                .map(fragment.setPreviousResult)
+
+        val task: Task[Fragment] = updated.toTask
+        Process.eval(task)
+      }
+    }
 
   def filterFailed: Process1[Fragment, Fragment] =
     process1.filter((_: Fragment).previousFailed)
@@ -107,18 +117,22 @@ object Filter extends App {
 
   (fragments |> execute).sequence(4): Fragments
 
-  def executeS(barrier: Task[Result]): Process1[Fragment, Task[Fragment]] =
+  def executeS(executing: Task[Result]): Process1[Fragment, Task[Fragment]] =
     Process.receive1 { fragment: Fragment =>
       lazy val executed = fragment.execute
 
-      val newBarrier =
+      val executing1 =
         if (fragment.isStep) {
-          val result = barrier.run
-          Task(result)
-        } else barrier.map(_ and executed.result)
+          val result = executing.run
+          Task.now(result)
+        } else executing.map(_ and executed.result)
 
-      emit(Task1.start(executed)) fby executeS(newBarrier)
+      emit(Task1.start(executed)) fby executeS(executing1)
     }
+  
+  
+  
+  
   type FragmentsTasks = Process[Task, Task[Fragment]]
 
   def executeOnline: Fragment => Fragments = { fragment =>

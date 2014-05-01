@@ -92,4 +92,18 @@ object Fold {
 
   val finish = last.map(console.last)
 
+  def runFold[T](process: Process[Task, T], fold: Fold[T]) = {
+    val last: Task[fold.S] =
+      logged(process)
+        .drainW(fold.sink)
+        .pipe(foldState(fold))
+        .runLastOr(fold.init)
+
+     last.map(fold.last)
+  }
+
+  def runFolds[T](process: Process[Task, T], folds: List[Fold[T]]) =
+    runFold(process, folds.suml)
+
+
 }
